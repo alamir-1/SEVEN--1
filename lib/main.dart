@@ -56,8 +56,18 @@ class _WebViewScreenState extends State<WebViewScreen> {
             debugPrint('WebView Error: ${error.description}');
           },
         ),
-      )
-      ..loadRequest(Uri.parse(_siteUrl));
+      );
+    _loadFreshPage();
+  }
+
+  Future<void> _loadFreshPage() async {
+    // امسح الكاش قبل كل تحميل عشان تضمن أحدث نسخة من الموقع دايماً
+    await _controller.clearCache();
+    await _controller.clearLocalStorage();
+    // إضافة رقم عشوائي في نهاية الرابط يجبر المتصفح يتجاهل أي نسخة محفوظة
+    final freshUrl =
+        '$_siteUrl?_t=${DateTime.now().millisecondsSinceEpoch}';
+    await _controller.loadRequest(Uri.parse(freshUrl));
   }
 
   Future<bool> _onWillPop() async {
@@ -90,6 +100,11 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 ),
             ],
           ),
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: _loadFreshPage,
+          tooltip: 'تحديث الصفحة',
+          child: const Icon(Icons.refresh),
         ),
       ),
     );
