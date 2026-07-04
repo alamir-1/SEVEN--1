@@ -32,7 +32,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
   late final WebViewController _controller;
   bool _isLoading = true;
 
-  static const String _siteUrl = 'https://alamir-1.github.io/SEVEN1/';
+static const String _siteUrl = 'https://alamir-1.github.io/SEVEN-27-3/';
 
   @override
   void initState() {
