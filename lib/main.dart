@@ -1,13 +1,27 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:gal/gal.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 
 final GlobalKey<ScaffoldMessengerState> _messengerKey =
     GlobalKey<ScaffoldMessengerState>();
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // خلي الشريط العلوي (شريط الحالة) شفاف والتطبيق ياخد الشاشة كاملة
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
+    ),
+  );
   runApp(const MyApp());
 }
 
@@ -59,6 +73,19 @@ class _WebViewScreenState extends State<WebViewScreen> {
     return true;
   }
 
+  // بتحدد امتداد الملف المناسب حسب نوعه القادم من الموقع
+  String _extensionFromMime(String mime) {
+    if (mime.contains('spreadsheetml') || mime.contains('ms-excel')) {
+      return 'xlsx';
+    }
+    if (mime.contains('pdf')) return 'pdf';
+    if (mime.contains('csv')) return 'csv';
+    if (mime.contains('wordprocessingml') || mime.contains('msword')) {
+      return 'docx';
+    }
+    return 'bin';
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -72,6 +99,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
       },
       child: Scaffold(
         body: SafeArea(
+          top: false,
           child: Stack(
             children: [
               InAppWebView(
@@ -100,7 +128,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
                   final fileUrl = downloadStartRequest.url.toString();
 
                   if (fileUrl.startsWith('data:')) {
-                    // الصورة جاية كبيانات base64 مباشرة من الموقع نفسه
                     try {
                       final commaIndex = fileUrl.indexOf(',');
                       final header = fileUrl.substring(5, commaIndex);
@@ -109,14 +136,31 @@ class _WebViewScreenState extends State<WebViewScreen> {
                       final bytes = base64Decode(base64Str);
 
                       if (isImage) {
+                        // الصور بتتحفظ مباشرة في معرض الصور
                         await Gal.requestAccess();
                         await Gal.putImageBytes(
                           bytes,
-                          name: 'SEVEN_${DateTime.now().millisecondsSinceEpoch}',
+                          name:
+                              'SEVEN_${DateTime.now().millisecondsSinceEpoch}',
                         );
                         _messengerKey.currentState?.showSnackBar(
                           const SnackBar(
                               content: Text('تم حفظ الصورة في معرض الصور ✅')),
+                        );
+                      } else {
+                        // أي نوع تاني (إكسل، PDF، وورد...) بيتحفظ في ملف مؤقت
+                        // وبعدين بيتفتح شاشة "مشاركة/حفظ" عشان تختار فين تحفظه
+                        final ext = _extensionFromMime(header);
+                        final tempDir = await getTemporaryDirectory();
+                        final fileName =
+                            'SEVEN_${DateTime.now().millisecondsSinceEpoch}.$ext';
+                        final filePath = '${tempDir.path}/$fileName';
+                        final file = File(filePath);
+                        await file.writeAsBytes(bytes);
+
+                        await Share.shareXFiles(
+                          [XFile(filePath)],
+                          text: 'ملف من تطبيق SEVEN',
                         );
                       }
                     } catch (e) {
