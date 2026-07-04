@@ -101,12 +101,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
             ],
           ),
         ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: _loadFreshPage,
-          tooltip: 'تحديث الصفحة',
-          child: const Icon(Icons.refresh),
-        ),
-      ),
+    ),
     );
   }
 }
