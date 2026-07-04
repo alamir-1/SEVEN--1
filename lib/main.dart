@@ -109,6 +109,73 @@ class _WebViewScreenState extends State<WebViewScreen> {
     ''');
   }
 
+  // بيتحقن جوه الموقع عشان يلقط أي تحميل ملف بطريقة Blob (زي إكسل من SheetJS)
+  // ويبعت البيانات + اسم الملف الحقيقي لـ Flutter عشان يحفظه صح
+  Future<void> _injectBlobDownloadWatcher(
+      InAppWebViewController controller) async {
+    await controller.evaluateJavascript(source: '''
+      (function() {
+        if (window.__seven_blob_hook_installed) return;
+        window.__seven_blob_hook_installed = true;
+        document.addEventListener('click', function(e) {
+          let el = e.target;
+          while (el && el.tagName !== 'A') el = el.parentElement;
+          if (!el) return;
+          const href = el.getAttribute('href') || '';
+          const downloadName = el.getAttribute('download');
+          if (href.indexOf('blob:') === 0 && downloadName) {
+            e.preventDefault();
+            e.stopPropagation();
+            fetch(href).then(r => r.blob()).then(function(blob) {
+              const reader = new FileReader();
+              reader.onloadend = function() {
+                if (window.flutter_inappwebview) {
+                  window.flutter_inappwebview.callHandler(
+                    'onBlobDownload', reader.result, downloadName
+                  );
+                }
+              };
+              reader.readAsDataURL(blob);
+            });
+          }
+        }, true);
+      })();
+    ''');
+  }
+
+  // بتحفظ الملف اللي جاي من Blob باسمه الحقيقي (زي الإكسل)
+  Future<void> _saveBlobFile(String dataUri, String fileName) async {
+    try {
+      final commaIndex = dataUri.indexOf(',');
+      final header = dataUri.substring(5, commaIndex);
+      final base64Str = dataUri.substring(commaIndex + 1);
+      final bytes = base64Decode(base64Str);
+      final isImage = header.contains('image');
+
+      if (isImage) {
+        await Gal.requestAccess();
+        await Gal.putImageBytes(bytes, name: fileName);
+        _messengerKey.currentState?.showSnackBar(
+          const SnackBar(content: Text('تم حفظ الصورة في معرض الصور ✅')),
+        );
+      } else {
+        final tempDir = await getTemporaryDirectory();
+        final filePath = '${tempDir.path}/$fileName';
+        final file = File(filePath);
+        await file.writeAsBytes(bytes);
+        await Share.shareXFiles(
+          [XFile(filePath)],
+          text: 'ملف من تطبيق SEVEN',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error saving blob file: $e');
+      _messengerKey.currentState?.showSnackBar(
+        const SnackBar(content: Text('حصل خطأ أثناء الحفظ ❌')),
+      );
+    }
+  }
+
   Future<bool> _onWillPop() async {
     if (_controller != null && await _controller!.canGoBack()) {
       _controller!.goBack();
@@ -167,6 +234,16 @@ class _WebViewScreenState extends State<WebViewScreen> {
                       }
                     },
                   );
+                  controller.addJavaScriptHandler(
+                    handlerName: 'onBlobDownload',
+                    callback: (args) async {
+                      if (args.length >= 2) {
+                        final dataUri = args[0] as String;
+                        final fileName = args[1] as String;
+                        await _saveBlobFile(dataUri, fileName);
+                      }
+                    },
+                  );
                 },
                 onLoadStart: (controller, url) {
                   setState(() => _isLoading = true);
@@ -174,6 +251,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 onLoadStop: (controller, url) async {
                   setState(() => _isLoading = false);
                   await _injectThemeWatcher(controller);
+                  await _injectBlobDownloadWatcher(controller);
                 },
                 onReceivedError: (controller, request, error) {
                   debugPrint('WebView Error: ${error.description}');
