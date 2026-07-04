@@ -13,13 +13,18 @@ final GlobalKey<ScaffoldMessengerState> _messengerKey =
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // خلي الشريط العلوي (شريط الحالة) شفاف والتطبيق ياخد الشاشة كاملة
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  // شريط الحالة يبقى بنفس لون شريط الموقع بالظبط (#111118)
+  SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.manual,
+    overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
+  );
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
+      statusBarColor: Color(0xFF111118),
       statusBarIconBrightness: Brightness.light,
       statusBarBrightness: Brightness.dark,
+      systemNavigationBarColor: Color(0xFF111118),
+      systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
   runApp(const MyApp());
@@ -50,6 +55,11 @@ class WebViewScreen extends StatefulWidget {
 class _WebViewScreenState extends State<WebViewScreen> {
   InAppWebViewController? _controller;
   bool _isLoading = true;
+  Color _barColor = const Color(0xFF111118); // أسود افتراضي (داكن)
+
+  // الألوان مأخوذة بالظبط من كود الموقع نفسه (متغيرات --dark2)
+  static const Color _darkBarColor = Color(0xFF111118);
+  static const Color _lightBarColor = Color(0xFFFFFFFF);
 
   static const String _siteUrl = 'https://alamir-1.github.io/SEVEN-27-3/';
 
@@ -63,6 +73,40 @@ class _WebViewScreenState extends State<WebViewScreen> {
     await _controller?.loadUrl(
       urlRequest: URLRequest(url: WebUri.uri(_freshUri())),
     );
+  }
+
+  void _applyBarColor(bool isLight) {
+    final color = isLight ? _lightBarColor : _darkBarColor;
+    setState(() => _barColor = color);
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: color,
+        statusBarIconBrightness:
+            isLight ? Brightness.dark : Brightness.light,
+        statusBarBrightness: isLight ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: color,
+        systemNavigationBarIconBrightness:
+            isLight ? Brightness.dark : Brightness.light,
+      ),
+    );
+  }
+
+  // بيتحقن جوه الموقع عشان يراقب أي تغيير في وضع الليلي/النهاري
+  // ويبلّغ Flutter فوراً لحظة حدوثه
+  Future<void> _injectThemeWatcher(InAppWebViewController controller) async {
+    await controller.evaluateJavascript(source: '''
+      (function() {
+        function reportTheme() {
+          const isLight = document.body.classList.contains('light-mode');
+          if (window.flutter_inappwebview) {
+            window.flutter_inappwebview.callHandler('onThemeChange', isLight);
+          }
+        }
+        reportTheme();
+        const observer = new MutationObserver(reportTheme);
+        observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+      })();
+    ''');
   }
 
   Future<bool> _onWillPop() async {
@@ -98,8 +142,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
         }
       },
       child: Scaffold(
+        backgroundColor: _barColor,
         body: SafeArea(
-          top: false,
+          top: true,
           child: Stack(
             children: [
               InAppWebView(
@@ -113,12 +158,22 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 ),
                 onWebViewCreated: (controller) {
                   _controller = controller;
+                  controller.addJavaScriptHandler(
+                    handlerName: 'onThemeChange',
+                    callback: (args) {
+                      if (args.isNotEmpty) {
+                        final isLight = args[0] == true;
+                        _applyBarColor(isLight);
+                      }
+                    },
+                  );
                 },
                 onLoadStart: (controller, url) {
                   setState(() => _isLoading = true);
                 },
-                onLoadStop: (controller, url) {
+                onLoadStop: (controller, url) async {
                   setState(() => _isLoading = false);
+                  await _injectThemeWatcher(controller);
                 },
                 onReceivedError: (controller, request, error) {
                   debugPrint('WebView Error: ${error.description}');
