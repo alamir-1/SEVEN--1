@@ -1,6 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:gal/gal.dart';
+
+final GlobalKey<ScaffoldMessengerState> _messengerKey =
+    GlobalKey<ScaffoldMessengerState>();
 
 void main() {
   runApp(const MyApp());
@@ -12,6 +17,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      scaffoldMessengerKey: _messengerKey,
       debugShowCheckedModeBanner: false,
       title: 'SEVEN WebView',
       theme: ThemeData(primarySwatch: Colors.blue),
@@ -92,14 +98,41 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 // هنا بيتم التعامل مع أي محاولة تحميل ملف (PDF أو صورة)
                 onDownloadStartRequest: (controller, downloadStartRequest) async {
                   final fileUrl = downloadStartRequest.url.toString();
-                  final uri = Uri.parse(fileUrl);
-                  // بيفتح الملف بمتصفح الجهاز (Chrome) اللي هيحمله وينزله
-                  // على مجلد التنزيلات (Downloads) بشكل طبيعي وتلقائي
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(
-                      uri,
-                      mode: LaunchMode.externalApplication,
-                    );
+
+                  if (fileUrl.startsWith('data:')) {
+                    // الصورة جاية كبيانات base64 مباشرة من الموقع نفسه
+                    try {
+                      final commaIndex = fileUrl.indexOf(',');
+                      final header = fileUrl.substring(5, commaIndex);
+                      final isImage = header.contains('image');
+                      final base64Str = fileUrl.substring(commaIndex + 1);
+                      final bytes = base64Decode(base64Str);
+
+                      if (isImage) {
+                        await Gal.requestAccess();
+                        await Gal.putImageBytes(
+                          bytes,
+                          name: 'SEVEN_${DateTime.now().millisecondsSinceEpoch}',
+                        );
+                        _messengerKey.currentState?.showSnackBar(
+                          const SnackBar(
+                              content: Text('تم حفظ الصورة في معرض الصور ✅')),
+                        );
+                      }
+                    } catch (e) {
+                      debugPrint('Error saving file: $e');
+                      _messengerKey.currentState?.showSnackBar(
+                        const SnackBar(content: Text('حصل خطأ أثناء الحفظ ❌')),
+                      );
+                    }
+                  } else {
+                    final uri = Uri.parse(fileUrl);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
                   }
                 },
                 // لو الموقع فتح رابط ملف مباشرة (زي رابط PDF) بدل ما يبدأ تحميل
