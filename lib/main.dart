@@ -31,7 +31,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
   InAppWebViewController? _controller;
   bool _isLoading = true;
 
-  static const String _siteUrl = 'https://alamir-1.github.io/SEVEN1/';
+  static const String _siteUrl = 'https://alamir-1.github.io/SEVEN-27-3/';
 
   Uri _freshUri() {
     return Uri.parse(
@@ -106,10 +106,12 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 shouldOverrideUrlLoading: (controller, navigationAction) async {
                   final url = navigationAction.request.url.toString();
                   final lower = url.toLowerCase();
-                  if (lower.endsWith('.pdf') ||
-                      lower.endsWith('.jpg') ||
-                      lower.endsWith('.jpeg') ||
-                      lower.endsWith('.png')) {
+                  final isDownloadable = lower.contains('.pdf') ||
+                      lower.contains('.jpg') ||
+                      lower.contains('.jpeg') ||
+                      lower.contains('.png') ||
+                      lower.contains('.webp');
+                  if (isDownloadable) {
                     final uri = Uri.parse(url);
                     if (await canLaunchUrl(uri)) {
                       await launchUrl(
@@ -126,11 +128,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 const Center(child: CircularProgressIndicator()),
             ],
           ),
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: _reload,
-          tooltip: 'تحديث الصفحة',
-          child: const Icon(Icons.refresh),
         ),
       ),
     );
